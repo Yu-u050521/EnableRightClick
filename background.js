@@ -152,14 +152,14 @@ async function enableOrigin(tabId, origin) {
     // "https://example.com" → "https://example.com/*"
     const pattern = origin + "/*";
 
-    // chrome.permissions.request() で動的に権限を要求
-    // 初回はChromeがダイアログを表示。2回目以降はすでに許可済みなのでスキップ。
-    const granted = await chrome.permissions.request({
+    // 権限はポップアップ側で既に取得済み（ユーザージェスチャーコンテキストが必要なため）
+    // 念のため権限が有効か確認する
+    const hasPermission = await chrome.permissions.contains({
         origins: [pattern],
     });
 
-    if (!granted) {
-        // ユーザーが拒否した場合
+    if (!hasPermission) {
+        // 権限がない場合（通常は発生しない）
         return false;
     }
 
@@ -253,8 +253,8 @@ async function handleMessage(message, sender, sendResponse) {
                 return;
             }
 
-            // --- ポップアップからの有効化/無効化要求 ---
-            case "toggle": {
+            // --- ポップアップからの有効化要求 ---
+            case "enable": {
                 const tab = await getCurrentTab();
                 if (!tab?.url || !tab.id) {
                     sendResponse({ success: false });
@@ -267,16 +267,27 @@ async function handleMessage(message, sender, sendResponse) {
                     return;
                 }
 
-                const origins = await getEnabledOrigins();
-                const isEnabled = origins.includes(origin);
+                const success = await enableOrigin(tab.id, origin);
+                sendResponse({ success, enabled: success });
+                return;
+            }
 
-                if (isEnabled) {
-                    await disableOrigin(tab.id, origin);
-                    sendResponse({ success: true, enabled: false });
-                } else {
-                    const success = await enableOrigin(tab.id, origin);
-                    sendResponse({ success, enabled: success });
+            // --- ポップアップからの無効化要求 ---
+            case "disable": {
+                const tab = await getCurrentTab();
+                if (!tab?.url || !tab.id) {
+                    sendResponse({ success: false });
+                    return;
                 }
+
+                const origin = extractOrigin(tab.url);
+                if (!origin) {
+                    sendResponse({ success: false });
+                    return;
+                }
+
+                await disableOrigin(tab.id, origin);
+                sendResponse({ success: true, enabled: false });
                 return;
             }
 
@@ -398,5 +409,37 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
         await updateBadge(activeInfo.tabId, isEnabled);
     } catch {
         // タブが存在しない場合
+    }
+});
+
+// =====================================================
+// 8. 権限付与時の自動有効化
+// =====================================================
+// chrome.permissions.request() はポップアップ側で呼ばれるが、
+// 権限ダイアログが表示される際にポップアップが閉じてしまうことがある。
+// その場合、ポップアップ側の後続処理（トグル完了）が実行されない。
+// このリスナーで権限付与を検知し、有効化処理を完了させる。
+
+chrome.permissions.onAdded.addListener(async (permissions) => {
+    if (!permissions.origins || permissions.origins.length === 0) return;
+
+    for (const pattern of permissions.origins) {
+        // "https://example.com/*" → "https://example.com"
+        const origin = pattern.replace(/\/\*$/, "");
+
+        // 既に有効化済みなら何もしない（ポップアップ側で処理完了済み）
+        const origins = await getEnabledOrigins();
+        if (origins.includes(origin)) continue;
+
+        // ストレージに保存
+        origins.push(origin);
+        await saveEnabledOrigins(origins);
+
+        // 対象タブを見つけて Content Script を注入
+        const tabs = await chrome.tabs.query({ url: pattern });
+        for (const tab of tabs) {
+            await injectContentScript(tab.id);
+            await updateBadge(tab.id, true);
+        }
     }
 });

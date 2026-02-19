@@ -40,14 +40,39 @@ document.addEventListener("DOMContentLoaded", async () => {
         // 連打防止のため一時的に無効化
         toggle.disabled = true;
 
-        // Background Script にトグル要求を送信
-        const result = await chrome.runtime.sendMessage({ type: "toggle" });
+        // 現在の状態を再取得（トグル操作中にタブが変わった場合に備える）
+        const currentStatus = await chrome.runtime.sendMessage({ type: "getStatus" });
+        const origin = currentStatus.origin;
+        const isCurrentlyEnabled = currentStatus.enabled;
+
+        // 意図するアクションを明示的に決定
+        // （"toggle" ではなく "enable"/"disable" を使うことで、
+        //   permissions.onAdded との競合を防ぐ）
+        const action = isCurrentlyEnabled ? "disable" : "enable";
+
+        if (action === "enable") {
+            // 有効化する場合: ポップアップ側で権限を要求
+            // chrome.permissions.request() はユーザージェスチャーのコンテキスト
+            // （＝ユーザーのクリック操作の延長）から呼ぶ必要があるため、
+            // Background Script ではなくここで呼ぶ。
+            const pattern = origin + "/*";
+            const granted = await chrome.permissions.request({ origins: [pattern] });
+            if (!granted) {
+                // ユーザーが権限を拒否した場合、トグルを元に戻す
+                toggle.checked = false;
+                toggle.disabled = false;
+                return;
+            }
+        }
+
+        // Background Script に明示的な有効化/無効化要求を送信
+        const result = await chrome.runtime.sendMessage({ type: action });
 
         if (result.success) {
             updateLabel(result.enabled);
             toggle.checked = result.enabled;
         } else {
-            // 失敗した場合は元に戻す（ユーザーが権限を拒否した場合など）
+            // 失敗した場合は元に戻す
             toggle.checked = !toggle.checked;
         }
 

@@ -1,171 +1,248 @@
 /**
- * EnableRightClick - Content Script
+ * EnableRightClick - Content Script (v2)
  *
- * Webページに注入され、右クリック・テキスト選択・コピーペーストの制限を解除する。
- *
- * === 制限解除の仕組み ===
- *
- * Webサイトは主に以下の方法で右クリックを制限している:
- *
- * 1. addEventListener('contextmenu', e => e.preventDefault())
- *    → イベントリスナーの伝播を止めて、ブラウザ標準の右クリックメニューを抑制
- *
- * 2. <body oncontextmenu="return false">
- *    → HTML属性でインラインハンドラーとして設定
- *
- * 3. CSS の user-select: none
- *    → テキスト選択をCSSレベルで無効化
- *
- * 本スクリプトでは、これらすべてのパターンに対応する。
- * さらに EventTarget.prototype.addEventListener をオーバーライドして、
- * スクリプト実行後に追加されるイベントリスナーもブロックする。
+ * シンプル・軽量・強力な制限解除スクリプト。
+ * Allow Right-Click を参考に、プロトタイプメソッドの無効化とスマートなDOM操作を組み合わせる。
  */
 
 (function () {
   "use strict";
 
-  // --- 二重実行の防止 ---
-  // このスクリプトが既に注入済みかどうかをフラグで管理する。
-  // chrome.scripting.executeScript は同じタブに複数回注入される可能性があるため。
+  // --- 二重実行防止 ---
   if (window.__enableRightClickInjected) return;
   window.__enableRightClickInjected = true;
 
   // =====================================================
-  // 1. ブロック対象のイベント一覧
+  // 1. プロトタイプメソッドの無効化 (最強の対策)
   // =====================================================
-  // これらのイベントが preventDefault() されると、右クリック・選択・コピーが無効化される
+  // サイト側が addEventListener でどのようなリスナーを登録しても、
+  // そこで呼ばれる preventDefault() を「何もしない関数」に書き換えてしまえば、
+  // ブラウザのデフォルト動作（右クリックメニュー、コピー等）は阻止されない。
+
+  const nullFn = function () { };
+
+  // MouseEvent.prototype.preventDefault を無効化
+  // (Method 12: Event Blocking, Method 2, 3, 4 etc. 全般に有効)
+  try {
+    Object.defineProperty(MouseEvent.prototype, "preventDefault", {
+      value: nullFn,
+      writable: true,
+      configurable: true,
+    });
+  } catch (e) {
+    console.error("[EnableRightClick] MouseEvent override failed", e);
+  }
+
+  // ClipboardEvent.prototype.preventDefault を無効化
+  // (Copy/Paste 制限対策)
+  try {
+    Object.defineProperty(ClipboardEvent.prototype, "preventDefault", {
+      value: nullFn,
+      writable: true,
+      configurable: true,
+    });
+  } catch (e) {
+    console.error("[EnableRightClick] ClipboardEvent override failed", e);
+  }
+
+  // Selection.prototype.removeAllRanges を無効化
+  // (Method 10: 選択解除対策)
+  try {
+    Object.defineProperty(Selection.prototype, "removeAllRanges", {
+      value: nullFn,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(Selection.prototype, "empty", {
+      value: nullFn,
+      writable: true,
+      configurable: true,
+    });
+  } catch (e) {
+    console.error("[EnableRightClick] Selection override failed", e);
+  }
+
+  // =====================================================
+  // 2. イベントリスナーのブロック (保険)
+  // =====================================================
+  // プロトタイプ無効化が効かないケース（return false 等）や、
+  // stopPropagation() でイベントが親に伝わらないのを防ぐため、
+  // キャプチャリングフェーズでイベントを捕捉して伝播を止める。
+
   const BLOCKED_EVENTS = [
-    "contextmenu", // 右クリックメニュー
-    "selectstart", // テキスト選択の開始
-    "copy", // コピー (Ctrl+C)
-    "cut", // カット (Ctrl+X)
-    "paste", // ペースト (Ctrl+V)
+    "contextmenu",
+    "selectstart",
+    "copy",
+    "cut",
+    "paste",
+    "dragstart",
+    "drag",
+    "keydown",
+    "keyup",
+    "keypress",
+    "input", // Method 14: 文字数制限対策
   ];
 
-  // ドラッグ関連のイベントも一部のサイトでは制限されている
-  const DRAG_EVENTS = ["dragstart", "drag"];
-
-  const ALL_BLOCKED = [...BLOCKED_EVENTS, ...DRAG_EVENTS];
-
-  // =====================================================
-  // 2. addEventListener のオーバーライド
-  // =====================================================
-  // 元の addEventListener を保存し、ラッパーで上書きする。
-  // これにより、ページのスクリプトが後から contextmenu 等のリスナーを
-  // 追加しようとしても、自動的にブロックされる。
-  const originalAddEventListener = EventTarget.prototype.addEventListener;
-
-  EventTarget.prototype.addEventListener = function (type, listener, options) {
-    // ブロック対象のイベントなら登録をスキップ
-    if (ALL_BLOCKED.includes(type)) {
-      return; // 何もしない = リスナーが登録されない
-    }
-    // それ以外のイベントは通常通り登録
-    return originalAddEventListener.call(this, type, listener, options);
-  };
-
-  // =====================================================
-  // 3. インラインイベントハンドラーの除去
-  // =====================================================
-  // <body oncontextmenu="return false"> のような HTML属性で
-  // 設定されたハンドラーを null で上書きして無効化する。
-  function removeInlineHandlers(element) {
-    // oncontextmenu, onselectstart, oncopy, oncut, onpaste, ondragstart, ondrag
-    ALL_BLOCKED.forEach((eventName) => {
-      const handlerProp = "on" + eventName;
-      if (element[handlerProp] !== null) {
-        element[handlerProp] = null;
-      }
+  // window と document の両方でキャプチャ
+  [window, document].forEach((target) => {
+    BLOCKED_EVENTS.forEach((type) => {
+      try {
+        target.addEventListener(
+          type,
+          (e) => {
+            e.stopImmediatePropagation();
+            // e.preventDefault() は我々のオーバーライドで無効化されているが、
+            // 念のためここでもイベントの伝播を完全に止める。
+          },
+          { capture: true }
+        );
+      } catch (e) { }
     });
-  }
 
-  // document と body の両方からインラインハンドラーを除去
-  removeInlineHandlers(document);
-  if (document.body) {
-    removeInlineHandlers(document.body);
-  }
-  removeInlineHandlers(document.documentElement);
-
-  // =====================================================
-  // 4. 既に登録済みのイベントリスナーを無効化
-  // =====================================================
-  // addEventListener をオーバーライドしただけでは、
-  // **既に登録済み**のリスナーには効果がない。
-  // そこで、キャプチャリングフェーズ（capture: true）で
-  // stopImmediatePropagation() を呼んでブロックする。
-  //
-  // 【キャプチャリングフェーズとは？】
-  //   イベントは以下の順序で処理される:
-  //   1. キャプチャリング: window → document → ... → target要素 （上から下）
-  //   2. ターゲット: target要素で発火
-  //   3. バブリング: target要素 → ... → document → window （下から上）
-  //
-  //   capture: true で登録すると、キャプチャリングフェーズ（最も早い段階）で
-  //   イベントを捕まえられるため、他のリスナーより先に実行される。
-  //   stopImmediatePropagation() で伝播を完全に止め、サイト側のリスナーが
-  //   実行されないようにする。
-
-  BLOCKED_EVENTS.forEach((eventName) => {
-    // 注意: ここでは originalAddEventListener を使う。
-    // document.addEventListener はオーバーライド済みで、
-    // BLOCKED_EVENTS のイベントは登録がスキップされてしまうため。
-    originalAddEventListener.call(
-      document,
-      eventName,
-      function (e) {
-        e.stopImmediatePropagation();
-        // e.preventDefault() は呼ばない → ブラウザ標準の動作は維持される
-        // 例: contextmenu なら右クリックメニューが表示される
-      },
-      { capture: true }
-    );
+    // mousedown / mouseup はクリック動作に影響するため、
+    // stopPropagation はせず、プロパティの上書きのみ行う（念のため）
+    ["mousedown", "mouseup"].forEach((type) => {
+      try {
+        target.addEventListener(
+          type,
+          (e) => {
+            // イベントオブジェクトの preventDefault メソッドを
+            // インスタンスレベルでも無効化しておく
+            e.preventDefault = nullFn;
+          },
+          { capture: true }
+        );
+      } catch (e) { }
+    });
   });
 
   // =====================================================
-  // 5. CSS による選択制限の解除
+  // 3. CSS 強制上書き (Method 6, 8, 15 対策)
   // =====================================================
-  // user-select: none を上書きして、テキスト選択を可能にする。
-  // !important を付けることで、サイト側の CSS より優先される。
-  const styleElement = document.createElement("style");
-  styleElement.id = "enable-right-click-styles";
-  styleElement.textContent = `
+  const style = document.createElement("style");
+  style.id = "enable-right-click-style";
+  style.textContent = `
     *, *::before, *::after {
       -webkit-user-select: auto !important;
       -moz-user-select: auto !important;
       -ms-user-select: auto !important;
       user-select: auto !important;
+      pointer-events: auto !important;
+    }
+    /* オーバーレイを非表示にするクラス */
+    .overlap, .overlay, [class*="overlap"], [class*="overlay"] {
+      display: none !important;
+      pointer-events: none !important;
     }
   `;
-  // <head> の末尾に style 要素を追加（末尾なのでサイトの CSS より後に評価される）
-  (document.head || document.documentElement).appendChild(styleElement);
+  (document.head || document.documentElement).appendChild(style);
 
   // =====================================================
-  // 6. MutationObserver による動的な要素の監視
+  // 4. スマートなオーバーレイ回避 & 背景画像救出 (Method 13, 16)
   // =====================================================
-  // SPA (Single Page Application) などでは、ページ遷移なしに
-  // 新しい要素が DOM に追加されることがある。
-  // 新しく追加された要素にもインラインハンドラーの除去を適用する。
+  // 右クリック(mousedown)された瞬間に、カーソル下の要素をチェックする
 
-  const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        // Element ノードのみ処理（テキストノード等を除外）
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          removeInlineHandlers(node);
-          // 子孫要素にもハンドラーがある場合に対応
-          node.querySelectorAll?.("*").forEach(removeInlineHandlers);
+  document.addEventListener(
+    "mousedown",
+    (e) => {
+      // 右クリック (button 2) のみ対象
+      if (e.button !== 2) return;
+
+      const x = e.clientX;
+      const y = e.clientY;
+
+      // カーソル下の全要素を取得
+      const elements = document.elementsFromPoint(x, y);
+
+      // A. 背景画像の救出 (Method 16 対策)
+      // -------------------------------------------------
+      // 要素の中に background-image を持つものがあれば、
+      // その画像を指す透明な <img> タグを生成して最前面に置く。
+      // これにより「名前を付けて画像を保存」が可能になる。
+
+      const bgElement = elements.find((el) => {
+        const s = window.getComputedStyle(el);
+        return (
+          s.backgroundImage &&
+          s.backgroundImage !== "none" &&
+          s.backgroundImage.includes("url")
+        );
+      });
+
+      if (bgElement) {
+        const s = window.getComputedStyle(bgElement);
+        const match = s.backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+        if (match && match[1]) {
+          const url = match[1];
+
+          // 救出用画像を検索、なければ作成
+          let img = document.querySelector(`img[data-erc-rescued="${url}"]`);
+          if (!img) {
+            img = document.createElement("img");
+            img.src = url;
+            img.dataset.ercRescued = url;
+            document.body.appendChild(img);
+          }
+
+          // スタイルと位置を更新 (毎回必ず実行)
+          // 元の要素と同じ位置・サイズに透明画像を重ねることで、
+          // どこをクリックしても確実に反応するようにする
+          const rect = bgElement.getBoundingClientRect();
+          img.style.cssText = `
+            position: fixed;
+            top: ${rect.top}px;
+            left: ${rect.left}px;
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+            opacity: 0.01; /* 完全透明だと無視されるブラウザ対策 */
+            z-index: 2147483647;
+            pointer-events: auto !important;
+            cursor: context-menu;
+            object-fit: cover; /* 背景画像の表示方法に合わせるのがベストだが、coverで概ねOK */
+          `;
+
+          // 一定時間後に削除 (ガベージコレクト)
+          // 面積が広いので少し長めに残す
+          clearTimeout(img._ercTimer);
+          img._ercTimer = setTimeout(() => img.remove(), 5000);
         }
       }
-    }
-  });
 
-  // document.body 以下の変化を監視
-  if (document.body) {
-    observer.observe(document.body, {
-      childList: true, // 子要素の追加・削除を監視
-      subtree: true, // 子孫要素も再帰的に監視
-    });
-  }
+      // B. オーバーレイ回避 (Method 13 対策)
+      // -------------------------------------------------
+      // 本来クリックしたい要素 (画像、動画、入力欄など) が
+      // 透明な要素の下に隠れている場合、上の要素を一時的に無視する。
 
-  console.log("[EnableRightClick] 制限を解除しました:", window.location.origin);
+      const targets = ["IMG", "VIDEO", "AUDIO", "INPUT", "TEXTAREA", "SELECT"];
+      const targetElement = elements.find((el) => targets.includes(el.tagName));
+
+      // もしターゲット要素が見つかり、かつそれが一番上の要素でない場合
+      if (targetElement && elements[0] !== targetElement) {
+        // ターゲットより上にある要素（＝邪魔なオーバーレイ）をすべて
+        // pointer-events: none にする
+        let blocked = false;
+        for (const el of elements) {
+          if (el === targetElement) break;
+
+          // 邪魔な要素
+          el.style.setProperty("pointer-events", "none", "important");
+          el.dataset.ercBlocked = "true";
+          blocked = true;
+        }
+
+        if (blocked) {
+          // 少し待ってから元に戻す（コンテキストメニューが出た後）
+          setTimeout(() => {
+            document.querySelectorAll('[data-erc-blocked="true"]').forEach((el) => {
+              el.style.pointerEvents = "";
+              delete el.dataset.ercBlocked;
+            });
+          }, 500);
+        }
+      }
+    },
+    true // キャプチャリングフェーズで実行（誰よりも早く）
+  );
+
+  console.log("[EnableRightClick] 制限解除完了 (v2)");
 })();
