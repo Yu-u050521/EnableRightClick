@@ -1,0 +1,176 @@
+/* =====================================================
+ * EnableRightClick - Popup スタイル
+ *
+ * ダークモード対応のコンパクトなポップアップUI。
+ * CSS変数を使ってテーマカラーを一元管理。
+ * ===================================================== */
+
+/* --- CSS変数（テーマ定義） --- */
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --text-primary: #eaeaea;
+  --text-secondary: #a0a0b8;
+  --accent: #4CAF50;
+  --accent-glow: rgba(76, 175, 80, 0.3);
+  --border: rgba(255, 255, 255, 0.08);
+  --radius: 10px;
+}
+
+/* --- リセット & ベース --- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  /* ポップアップの幅を固定 */
+  width: 280px;
+  min-height: 100px;
+}
+
+/* --- コンテナ --- */
+.popup-container {
+  padding: 16px;
+}
+
+/* --- ヘッダー --- */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.settings-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+
+.settings-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* --- オリジン表示 --- */
+.origin-display {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin-bottom: 14px;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* --- トグルエリア --- */
+.toggle-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+/* --- トグルスイッチ本体 --- */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+/* 実際のチェックボックスは非表示 */
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* スライダー（トグルの背景部分） */
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #444;
+  border-radius: 24px;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+/* スライダーの丸い部分 */
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+
+/* チェック時（ON状態） */
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* チェック時、丸を右に移動 */
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+
+/* 無効状態 */
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- トグルラベル --- */
+.toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+
+.toggle-label.active {
+  color: var(--accent);
+}
+
+/* --- 非対応メッセージ --- */
+.unsupported-message {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}

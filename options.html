@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EnableRightClick - 設定</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+
+<body>
+    <div class="options-container">
+        <!-- ヘッダー -->
+        <div class="header">
+            <h1>EnableRightClick</h1>
+            <p class="subtitle">有効化されているサイトの管理</p>
+        </div>
+
+        <!-- サイト一覧 -->
+        <div class="site-list-section">
+            <div class="section-header">
+                <h2>許可済みサイト</h2>
+                <button id="remove-all-btn" class="btn btn-danger" style="display: none;">
+                    すべて解除
+                </button>
+            </div>
+
+            <!-- サイト一覧がここに動的に生成される -->
+            <div id="site-list" class="site-list">
+                <div class="empty-state" id="empty-state">
+                    <p>有効化されているサイトはありません</p>
+                    <p class="hint">ツールバーのアイコンをクリックしてサイトを有効化してください</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="options.js"></script>
+</body>
+
+</html>

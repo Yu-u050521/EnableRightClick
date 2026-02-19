@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "EnableRightClick",
+  "version": "1.0.0",
+  "description": "右クリック・テキスト選択・コピーペーストの制限を解除します",
+
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_popup": "popup.html"
+  },
+
+  "options_page": "options.html"
+}

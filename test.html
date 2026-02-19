@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EnableRightClick テスト用ページ</title>
+  <style>
+    /* ============================================
+     * このテスト用ページでは、Webサイトが右クリックや
+     * テキスト選択を制限する主要な方法をすべて使用している。
+     * EnableRightClick拡張機能が正しく動作すれば、
+     * これらの制限がすべて解除されるはず。
+     * ============================================ */
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 0 20px;
+      line-height: 1.8;
+      color: #333;
+      background: #fafafa;
+    }
+
+    h1 { color: #1a1a2e; border-bottom: 2px solid #4CAF50; padding-bottom: 8px; }
+    h2 { color: #16213e; margin-top: 32px; }
+
+    .test-box {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .status.blocked { background: #fee2e2; color: #dc2626; }
+    .status.ok { background: #dcfce7; color: #16a34a; }
+
+    /* ====== テスト1: CSSによるテキスト選択の制限 ====== */
+    .no-select {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+
+    .instructions {
+      background: #f0f9ff;
+      border-left: 4px solid #3b82f6;
+      padding: 12px 16px;
+      margin: 20px 0;
+      border-radius: 0 8px 8px 0;
+    }
+  </style>
+</head>
+
+<!-- テスト2: HTML属性による右クリックの制限 -->
+<body oncontextmenu="return false" onselectstart="return false" oncopy="return false">
+
+  <h1>🧪 EnableRightClick テストページ</h1>
+
+  <div class="instructions">
+    <strong>テスト手順:</strong><br>
+    1. まず拡張機能なしでこのページを操作してみてください（右クリック・テキスト選択ができないはず）<br>
+    2. 拡張機能をONにして、すべての制限が解除されることを確認してください
+  </div>
+
+  <!-- テスト1: CSS user-select: none -->
+  <h2>テスト1: テキスト選択の制限（CSS）</h2>
+  <div class="test-box">
+    <p class="no-select">
+      このテキストは <code>user-select: none</code> で選択が制限されています。
+      拡張機能が有効なら、このテキストを選択できるはずです。
+    </p>
+    <span class="status blocked">CSS制限あり</span>
+  </div>
+
+  <!-- テスト2: oncontextmenu -->
+  <h2>テスト2: 右クリックの制限（HTML属性）</h2>
+  <div class="test-box">
+    <p>
+      このページの &lt;body&gt; タグに <code>oncontextmenu="return false"</code> が設定されています。
+      右クリックしてコンテキストメニューが表示されれば成功です。
+    </p>
+    <span class="status blocked">HTML属性で制限</span>
+  </div>
+
+  <!-- テスト3: addEventListener による制限 -->
+  <h2>テスト3: 右クリックの制限（JavaScript）</h2>
+  <div class="test-box" id="js-block-area">
+    <p>
+      この領域は <code>addEventListener('contextmenu', ...)</code> で右クリックが制限されています。
+      右クリックしてコンテキストメニューが表示されれば成功です。
+    </p>
+    <span class="status blocked">JavaScript制限あり</span>
+  </div>
+
+  <!-- テスト4: コピーの制限 -->
+  <h2>テスト4: コピーの制限</h2>
+  <div class="test-box">
+    <p>
+      このページでは <code>oncopy="return false"</code> でコピーが制限されています。
+      このテキストを選択して Ctrl+C でコピーできれば成功です。
+    </p>
+    <span class="status blocked">コピー制限あり</span>
+  </div>
+
+  <!-- テスト5: ドラッグの制限 -->
+  <h2>テスト5: ドラッグの制限</h2>
+  <div class="test-box">
+    <p>このテキストをドラッグできれば成功です。</p>
+    <span class="status blocked">ドラッグ制限あり</span>
+  </div>
+
+  <script>
+    // ============================================
+    // テスト3: JavaScript による右クリック制限
+    // ============================================
+    // 多くのWebサイトが使用する一般的な制限方法
+
+    // 方法A: addEventListener でブロック
+    document.getElementById('js-block-area').addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      alert('右クリックは無効です！（JavaScript による制限）');
+    });
+
+    // 方法B: document全体でもブロック
+    document.addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+    });
+
+    // 方法C: テキスト選択もブロック
+    document.addEventListener('selectstart', function(e) {
+      e.preventDefault();
+    });
+
+    // 方法D: コピーもブロック
+    document.addEventListener('copy', function(e) {
+      e.preventDefault();
+    });
+
+    // 方法E: ドラッグもブロック
+    document.addEventListener('dragstart', function(e) {
+      e.preventDefault();
+    });
+
+    // 方法F: キーボードショートカットもブロック（Ctrl+C, Ctrl+A 等）
+    document.addEventListener('keydown', function(e) {
+      if (e.ctrlKey && (e.key === 'c' || e.key === 'a' || e.key === 'u')) {
+        e.preventDefault();
+      }
+    });
+  </script>
+
+</body>
+</html>
